@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Meu SRS (tipo Anki)</title>
+  <style>
+    :root {
+      --bg:#0b1220; --card:#111a2e; --muted:#8ea1c2; --text:#e7eefc;
+      --line:#1e2a44; --btn:#1a2540; --btn2:#243355; --danger:#7a1f2b;
+      --ok:#1f6f45; --warn:#6b5b1c;
+      --radius:16px;
+    }
+    *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    body{margin:0;background:var(--bg);color:var(--text)}
+    header{padding:16px 16px 8px;border-bottom:1px solid var(--line)}
+    h1{margin:0;font-size:18px}
+    .muted{color:var(--muted);font-size:12px}
+    nav{display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap}
+    button, input, select, textarea{
+      border:1px solid var(--line); background:var(--btn); color:var(--text);
+      padding:10px 12px; border-radius:12px; font-size:14px;
+    }
+    button{cursor:pointer}
+    button.primary{background:var(--btn2)}
+    button.danger{background:var(--danger)}
+    .container{max-width:820px;margin:0 auto;padding:16px}
+    .grid{display:grid;gap:12px}
+    .card{
+      background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+      padding:14px;
+    }
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .row > * {flex: 1 1 auto}
+    label{display:block;font-size:12px;color:var(--muted);margin:6px 0}
+    textarea{width:100%;min-height:84px;resize:vertical}
+    .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:720px){.split{grid-template-columns:1fr}}
+    .big{font-size:20px;line-height:1.25;margin:0}
+    .center{text-align:center}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;
+      border:1px solid var(--line); background:rgba(255,255,255,.03); font-size:12px; color:var(--muted)}
+    .ans{margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); display:none}
+    .ans.show{display:block}
+    .rating button{flex:1}
+    .rating .bad{background:var(--danger)}
+    .rating .hard{background:var(--warn)}
+    .rating .good{background:var(--ok)}
+    .rating .easy{background:#2a4c9b}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .tiny{font-size:11px;color:var(--muted)}
+    .list{display:grid;gap:10px}
+    .item{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .item strong{font-size:14px}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Meu SRS (tipo Anki)</h1>
+  <div class="muted">Offline no iPhone • Sem limite de revisões • Dados ficam só no seu aparelho</div>
+</header>
+
+<nav>
+  <button class="primary" id="tabReview">Revisar</button>
+  <button id="tabAdd">Adicionar</button>
+  <button id="tabDecks">Decks</button>
+  <button id="tabStats">Stats</button>
+  <button id="tabBackup">Backup</button>
+</nav>
+
+<div class="container">
+  <!-- REVIEW -->
+  <section id="viewReview" class="grid" style="display:block">
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div>
+          <label>Deck</label>
+          <select id="reviewDeck"></select>
+        </div>
+        <div>
+          <label>Modo</label>
+          <select id="reviewMode">
+            <option value="due">Somente vencidos</option>
+            <option value="mixed">Vencidos + extras</option>
+            <option value="newfirst">Novos primeiro</option>
+          </select>
+        </div>
+        <div>
+          <label>Extras (se modo permitir)</label>
+          <input id="extraCount" type="number" min="0" max="200" value="20" />
+        </div>
+        <div style="flex:0 0 auto">
+          <button id="startReview" class="primary">Começar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="pill">Vencidos hoje: <strong id="dueToday">0</strong></span>
+        <span class="pill">Novos: <strong id="newCount">0</strong></span>
+        <span class="pill">Total no deck: <strong id="totalCount">0</strong></span>
+      </div>
+    </div>
+
+    <div class="card" id="reviewCard" style="display:none">
+      <div class="row" style="justify-content:space-between">
+        <span class="pill">Card <strong id="cardIndex">0</strong>/<strong id="cardTotal">0</strong></span>
+        <span class="pill">Próximo venc.: <strong id="nextDueTxt">—</strong></span>
+      </div>
+
+      <div style="margin-top:12px">
+        <p class="muted" id="frontLabel">Frente</p>
+        <p class="big" id="frontText"></p>
+
+        <div class="ans" id="answerBlock">
+          <p class="muted" id="backLabel">Verso</p>
+          <p class="big" id="backText"></p>
+          <div id="exampleWrap" style="margin-top:10px;display:none">
+            <div class="muted">Exemplo</div>
+            <div id="exampleText"></div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <button id="toggleAnswer" class="primary">Mostrar resposta</button>
+          <button id="skipCard">Pular</button>
+        </div>
+
+        <div class="row rating" style="margin-top:10px;display:none" id="ratingRow">
+          <button class="bad" data-rate="again">Errei</button>
+          <button class="hard" data-rate="hard">Difícil</button>
+          <button class="good" data-rate="good">Bom</button>
+          <button class="easy" data-rate="easy">Fácil</button>
+        </div>
+
+        <div class="tiny" style="margin-top:10px">
+          <span class="mono">interval</span>: <span id="dbgInterval">—</span> dias •
+          <span class="mono">ease</span>: <span id="dbgEase">—</span> •
+          <span class="mono">lapses</span>: <span id="dbgLapses">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="reviewDone" style="display:none">
+      <div class="center">
+        <p class="big">Fim da sessão ✅</p>
+        <p class="muted">Você terminou os cards selecionados.</p>
+        <button id="restart" class="primary">Nova sessão</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADD -->
+  <section id="viewAdd" class="grid" style="display:none">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Deck</label>
+          <select id="addDeck"></select>
+        </div>
+        <div>
+          <label>Direção</label>
+          <select id="direction">
+            <option value="en-pt">Inglês → Português</option>
+            <option value="pt-en">Português → Inglês</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:10px">
+        <div>
+          <label id="frontInputLabel">Frente</label>
+          <textarea id="frontInput" placeholder="Ex: to fix"></textarea>
+        </div>
+        <div>
+          <label id="backInputLabel">Verso</label>
+          <textarea id="backInput" placeholder="Ex: consertar"></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <label>Exemplo (opcional)</label>
+        <textarea id="exampleInput" placeholder="Ex: I need to fix this machine."></textarea>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="saveCard" class="primary">Salvar card</button>
+        <button id="clearForm">Limpar</button>
+      </div>
+
+      <div class="muted" id="saveMsg" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- DECKS -->
+  <section id="viewDecks" class="grid" style="display:none">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Novo deck</label>
+          <input id="newDeckName" placeholder="Ex: Trabalho / Oficina" />
+        </div>
+        <div style="flex:0 0 auto">
+          <button id="createDeck" class="primary">Criar</button>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px">Dica: crie decks por contexto (oficina, casa, conversação, verbos, etc.).</div>
+    </div>
+
+    <div class="card">
+      <div class="list" id="deckList"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Deck</label>
+          <select id="manageDeck"></select>
+        </div>
+        <div style="flex:0 0 auto">
+          <button id="exportDeck">Exportar deck (.json)</button>
+        </div>
+        <div style="flex:0 0 auto">
+          <button id="deleteDeck" class="danger">Excluir deck</button>
+        </div>
+      </div>
+      <p class="tiny">Excluir deck remove todos os cards dele (não dá pra desfazer).</p>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section id="viewStats" class="grid" style="display:none">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Deck</label>
+          <select id="statsDeck"></select>
+        </div>
+        <div style="flex:0 0 auto">
+          <button id="refreshStats" class="primary">Atualizar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap">
+        <span class="pill">Revisões hoje: <strong id="stToday">0</strong></span>
+        <span class="pill">Acertos hoje: <strong id="stCorrect">0</strong></span>
+        <span class="pill">Taxa hoje: <strong id="stRate">0%</strong></span>
+        <span class="pill">Streak (dias): <strong id="stStreak">0</strong></span>
+      </div>
+      <div class="tiny" style="margin-top:10px">
+        O streak conta dias com pelo menos 1 revisão feita.
+      </div>
+    </div>
+  </section>
+
+  <!-- BACKUP -->
+  <section id="viewBackup" class="grid" style="display:none">
+    <div class="card">
+      <div class="row">
+        <button id="exportAll" class="primary">Exportar tudo (.json)</button>
+        <label style="display:inline-block;margin:0">
+          <input id="importFile" type="file" accept="application/json" style="display:none" />
+          <button id="importBtn">Importar backup</button>
+        </label>
+        <button id="resetAll" class="danger">Zerar tudo</button>
+      </div>
+      <p class="tiny">
+        Backup é importante porque seus dados ficam no iPhone. Se apagar o site/app do Safari, pode perder tudo.
+      </p>
+      <div class="muted" id="backupMsg"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/** ====== Storage (localStorage) ======
+ * Estrutura:
+ *  - srs_decks: [{id,name,createdAt}]
+ *  - srs_cards: [{id,deckId,front,back,example,createdAt, due, interval, ease, lapses, reps, lastReviewed}]
+ *  - srs_stats: { byDay: { "YYYY-MM-DD": {reviews, correct} } }
+ */
+const LS = {
+  decks: "srs_decks",
+  cards: "srs_cards",
+  stats: "srs_stats",
+};
+
+const now = () => Date.now();
+const dayKey = (t=Date.now()) => new Date(t).toISOString().slice(0,10);
+const clamp = (v,min,max) => Math.max(min, Math.min(max, v));
+
+function load(key, fallback){
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+  catch { return fallback; }
+}
+function save(key, value){
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function uid(){
+  return Math.random().toString(16).slice(2) + "-" + Math.random().toString(16).slice(2);
+}
+
+// Init defaults
+function ensureInit(){
+  let decks = load(LS.decks, null);
+  let cards = load(LS.cards, null);
+  let stats = load(LS.stats, null);
+
+  if(!decks){
+    decks = [{ id: "default", name: "Inglês Geral", createdAt: now() }];
+    save(LS.decks, decks);
+  }
+  if(!cards){
+    cards = [];
+    save(LS.cards, cards);
+  }
+  if(!stats){
+    stats = { byDay: {} };
+    save(LS.stats, stats);
+  }
+}
+ensureInit();
+
+/** ====== SRS algo simples ======
+ * ease default 2.5
+ * interval (dias) default 0 -> novo
+ * again: interval=1, ease-=0.20, lapses++
+ * hard : interval=max(1, round(interval*1.2)), ease-=0.05
+ * good : interval=max(1, round(interval*2.0)), ease+=0
+ * easy : interval=max(2, round(interval*2.6)), ease+=0.10
+ * due = now + interval dias
+ */
+function applyRating(card, rating){
+  let ease = card.ease ?? 2.5;
+  let interval = card.interval ?? 0;
+  let lapses = card.lapses ?? 0;
+  let reps = card.reps ?? 0;
+
+  if(rating === "again"){
+    interval = 1;
+    ease = clamp(ease - 0.20, 1.3, 3.2);
+    lapses += 1;
+  } else if(rating === "hard"){
+    interval = Math.max(1, Math.round(Math.max(1, interval) * 1.2));
+    ease = clamp(ease - 0.05, 1.3, 3.2);
+  } else if(rating === "good"){
+    interval = Math.max(1, Math.round(Math.max(1, interval) * 2.0));
+  } else if(rating === "easy"){
+    interval = Math.max(2, Math.round(Math.max(1, interval) * 2.6));
+    ease = clamp(ease + 0.10, 1.3, 3.2);
+  }
+
+  reps += 1;
+  const due = now() + interval * 86400000;
+
+  return {
+    ...card,
+    ease, interval, lapses, reps,
+    due,
+    lastReviewed: now(),
+  };
+}
+
+function isDue(card){
+  const due = card.due ?? 0;
+  return due <= now();
+}
+
+function isNew(card){
+  return (card.reps ?? 0) === 0;
+}
+
+/** ====== UI helpers ====== */
+const $ = (id) => document.getElementById(id);
+
+function showView(viewId){
+  const views = ["viewReview","viewAdd","viewDecks","viewStats","viewBackup"];
+  for(const v of views) $(v).style.display = (v === viewId ? "block" : "none");
+  // Update counts when switching
+  refreshAllSelects();
+  updateDeckCounts();
+}
+
+$("tabReview").onclick = () => showView("viewReview");
+$("tabAdd").onclick = () => showView("viewAdd");
+$("tabDecks").onclick = () => showView("viewDecks");
+$("tabStats").onclick = () => showView("viewStats");
+$("tabBackup").onclick = () => showView("viewBackup");
+
+function decks(){ return load(LS.decks, []); }
+function cards(){ return load(LS.cards, []); }
+function stats(){ return load(LS.stats, {byDay:{}}); }
+
+function setDeckOptions(selectEl, selectedId){
+  const ds = decks();
+  selectEl.innerHTML = ds.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
+  if(selectedId && ds.some(d=>d.id===selectedId)) selectEl.value = selectedId;
+}
+
+function escapeHtml(s){
+  return (s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function refreshAllSelects(){
+  const ids = ["reviewDeck","addDeck","manageDeck","statsDeck"];
+  for(const id of ids){
+    const el = $(id);
+    if(el) setDeckOptions(el, el.value || "default");
+  }
+}
+
+refreshAllSelects();
+
+/** ====== Add card ====== */
+function updateDirectionLabels(){
+  const dir = $("direction").value;
+  if(dir === "en-pt"){
+    $("frontInputLabel").textContent = "Frente (Inglês)";
+    $("backInputLabel").textContent  = "Verso (Português)";
+  } else {
+    $("frontInputLabel").textContent = "Frente (Português)";
+    $("backInputLabel").textContent  = "Verso (Inglês)";
+  }
+}
+$("direction").onchange = updateDirectionLabels;
+updateDirectionLabels();
+
+$("saveCard").onclick = () => {
+  const deckId = $("addDeck").value;
+  const front = $("frontInput").value.trim();
+  const back  = $("backInput").value.trim();
+  const example = $("exampleInput").value.trim();
+  if(!front || !back){
+    $("saveMsg").textContent = "Preencha Frente e Verso.";
+    return;
+  }
+
+  const all = cards();
+  all.push({
+    id: uid(),
+    deckId,
+    front,
+    back,
+    example,
+    createdAt: now(),
+    // SRS fields
+    due: now(),        // novo já entra vencido
+    interval: 0,
+    ease: 2.5,
+    lapses: 0,
+    reps: 0,
+    lastReviewed: 0,
+  });
+  save(LS.cards, all);
+
+  $("saveMsg").textContent = "Card salvo ✅";
+  $("frontInput").value = "";
+  $("backInput").value = "";
+  $("exampleInput").value = "";
+  updateDeckCounts();
+};
+
+$("clearForm").onclick = () => {
+  $("frontInput").value = "";
+  $("backInput").value = "";
+  $("exampleInput").value = "";
+  $("saveMsg").textContent = "";
+};
+
+/** ====== Deck management ====== */
+function renderDeckList(){
+  const ds = decks();
+  const all = cards();
+  const wrap = $("deckList");
+  wrap.innerHTML = "";
+  for(const d of ds){
+    const total = all.filter(c=>c.deckId===d.id).length;
+    const due = all.filter(c=>c.deckId===d.id && isDue(c)).length;
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <strong>${escapeHtml(d.name)}</strong>
+        <div class="tiny">Total: ${total} • Vencidos: ${due}</div>
+      </div>
+      <div class="row" style="gap:8px;flex:0 0 auto">
+        <button data-set="${d.id}">Usar</button>
+      </div>
+    `;
+    div.querySelector("button").onclick = () => {
+      $("reviewDeck").value = d.id;
+      $("addDeck").value = d.id;
+      $("manageDeck").value = d.id;
+      $("statsDeck").value = d.id;
+      updateDeckCounts();
+      showView("viewReview");
+    };
+    wrap.appendChild(div);
+  }
+}
+
+$("createDeck").onclick = () => {
+  const name = $("newDeckName").value.trim();
+  if(!name){ return; }
+  const ds = decks();
+  ds.push({ id: uid(), name, createdAt: now() });
+  save(LS.decks, ds);
+  $("newDeckName").value = "";
+  refreshAllSelects();
+  renderDeckList();
+  updateDeckCounts();
+};
+
+$("deleteDeck").onclick = () => {
+  const deckId = $("manageDeck").value;
+  if(deckId === "default"){
+    alert("Você não pode excluir o deck padrão.");
+    return;
+  }
+  if(!confirm("Excluir este deck e TODOS os cards dele?")) return;
+
+  const ds = decks().filter(d => d.id !== deckId);
+  save(LS.decks, ds);
+
+  const cs = cards().filter(c => c.deckId !== deckId);
+  save(LS.cards, cs);
+
+  refreshAllSelects();
+  renderDeckList();
+  updateDeckCounts();
+};
+
+$("exportDeck").onclick = () => {
+  const deckId = $("manageDeck").value;
+  const d = decks().find(x=>x.id===deckId);
+  const payload = {
+    type: "deck_export_v1",
+    deck: d,
+    cards: cards().filter(c=>c.deckId===deckId),
+    exportedAt: new Date().toISOString(),
+  };
+  downloadJson(payload, `deck_${(d?.name||"export").replace(/\s+/g,"_")}.json`);
+};
+
+function updateDeckCounts(){
+  const deckId = $("reviewDeck").value;
+  const cs = cards().filter(c=>c.deckId===deckId);
+  $("dueToday").textContent = cs.filter(isDue).length;
+  $("newCount").textContent = cs.filter(isNew).length;
+  $("totalCount").textContent = cs.length;
+  renderDeckList();
+}
+$("reviewDeck").onchange = updateDeckCounts;
+updateDeckCounts();
+
+/** ====== Review session ====== */
+let session = {
+  queue: [],
+  idx: 0,
+  current: null,
+  deckId: "default",
+};
+
+function buildQueue(deckId, mode, extras){
+  const cs = cards().filter(c=>c.deckId===deckId);
+  const due = cs.filter(isDue);
+  const fresh = cs.filter(isNew);
+
+  // Helpers to avoid duplicates
+  const byId = (arr) => new Set(arr.map(x=>x.id));
+
+  if(mode === "due"){
+    return shuffle(due);
+  }
+
+  if(mode === "newfirst"){
+    // new first + due + some extras
+    const base = [...shuffle(fresh), ...shuffle(due.filter(c=>!isNew(c)))];
+    const ids = byId(base);
+    const remaining = cs.filter(c=>!ids.has(c.id));
+    return base.concat(shuffle(remaining).slice(0, extras));
+  }
+
+  // mixed: due + extras from remaining
+  const base = shuffle(due);
+  const ids = byId(base);
+  const remaining = cs.filter(c=>!ids.has(c.id));
+  return base.concat(shuffle(remaining).slice(0, extras));
+}
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function showReviewUI(state){
+  $("reviewCard").style.display = state==="card" ? "block" : "none";
+  $("reviewDone").style.display = state==="done" ? "block" : "none";
+}
+
+function renderCurrent(){
+  const c = session.current;
+  if(!c){ return; }
+
+  $("cardIndex").textContent = String(session.idx+1);
+  $("cardTotal").textContent = String(session.queue.length);
+
+  $("frontText").textContent = c.front;
+  $("backText").textContent = c.back;
+
+  if(c.example && c.example.trim()){
+    $("exampleWrap").style.display = "block";
+    $("exampleText").textContent = c.example;
+  } else {
+    $("exampleWrap").style.display = "none";
+    $("exampleText").textContent = "";
+  }
+
+  $("answerBlock").classList.remove("show");
+  $("toggleAnswer").textContent = "Mostrar resposta";
+  $("ratingRow").style.display = "none";
+
+  const due = c.due ?? 0;
+  $("nextDueTxt").textContent = (due ? new Date(due).toLocaleDateString("pt-BR") : "—");
+  $("dbgInterval").textContent = String(c.interval ?? 0);
+  $("dbgEase").textContent = String((c.ease ?? 2.5).toFixed(2));
+  $("dbgLapses").textContent = String(c.lapses ?? 0);
+}
+
+function nextCard(){
+  if(session.idx >= session.queue.length){
+    session.current = null;
+    showReviewUI("done");
+    return;
+  }
+  session.current = session.queue[session.idx];
+  showReviewUI("card");
+  renderCurrent();
+}
+
+$("startReview").onclick = () => {
+  const deckId = $("reviewDeck").value;
+  const mode = $("reviewMode").value;
+  const extras = clamp(parseInt($("extraCount").value || "0", 10), 0, 200);
+
+  const q = buildQueue(deckId, mode, extras);
+  session = { queue: q, idx: 0, current: null, deckId };
+
+  if(q.length === 0){
+    alert("Nada para revisar nesse deck.");
+    return;
+  }
+  nextCard();
+};
+
+$("toggleAnswer").onclick = () => {
+  const ans = $("answerBlock");
+  const showing = ans.classList.toggle("show");
+  $("toggleAnswer").textContent = showing ? "Ocultar resposta" : "Mostrar resposta";
+  $("ratingRow").style.display = showing ? "flex" : "none";
+};
+
+$("skipCard").onclick = () => {
+  session.idx += 1;
+  nextCard();
+};
+
+$("ratingRow").onclick = (e) => {
+  const btn = e.target.closest("button[data-rate]");
+  if(!btn) return;
+
+  const rating = btn.getAttribute("data-rate");
+  const current = session.current;
+  if(!current) return;
+
+  // Update card in storage
+  const all = cards();
+  const idx = all.findIndex(x=>x.id===current.id);
+  const updated = applyRating(current, rating);
+  if(idx >= 0){
+    all[idx] = updated;
+    save(LS.cards, all);
+  }
+
+  // Stats
+  const st = stats();
+  const k = dayKey();
+  if(!st.byDay[k]) st.byDay[k] = { reviews: 0, correct: 0 };
+  st.byDay[k].reviews += 1;
+  if(rating !== "again") st.byDay[k].correct += 1;
+  save(LS.stats, st);
+
+  session.idx += 1;
+  updateDeckCounts();
+  nextCard();
+};
+
+$("restart").onclick = () => {
+  $("reviewCard").style.display = "none";
+  $("reviewDone").style.display = "none";
+  showView("viewReview");
+};
+
+/** ====== Stats ====== */
+function computeStreak(byDay){
+  // streak até hoje: conta dias consecutivos com reviews>0
+  let streak = 0;
+  let t = new Date();
+  for(;;){
+    const k = t.toISOString().slice(0,10);
+    const day = byDay[k];
+    if(day && day.reviews > 0){
+      streak += 1;
+      t.setDate(t.getDate()-1);
+    } else break;
+  }
+  return streak;
+}
+
+function refreshStats(){
+  const deckId = $("statsDeck").value;
+  // Hoje: só depende de stats, não de deck (MVP). Mantemos simples.
+  const st = stats();
+  const k = dayKey();
+  const today = st.byDay[k] ?? {reviews:0, correct:0};
+  $("stToday").textContent = String(today.reviews);
+  $("stCorrect").textContent = String(today.correct);
+  $("stRate").textContent = today.reviews ? Math.round((today.correct/today.reviews)*100) + "%" : "0%";
+  $("stStreak").textContent = String(computeStreak(st.byDay));
+}
+$("refreshStats").onclick = refreshStats;
+
+/** ====== Backup ====== */
+function downloadJson(obj, filename){
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 500);
+}
+
+$("exportAll").onclick = () => {
+  const payload = {
+    type: "srs_backup_v1",
+    decks: decks(),
+    cards: cards(),
+    stats: stats(),
+    exportedAt: new Date().toISOString(),
+  };
+  downloadJson(payload, `srs_backup_${dayKey()}.json`);
+  $("backupMsg").textContent = "Backup exportado ✅";
+};
+
+$("importBtn").onclick = () => $("importFile").click();
+$("importFile").onchange = async (e) => {
+  const file = e.target.files?.[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(data.type !== "srs_backup_v1") throw new Error("Formato inválido.");
+
+    if(!confirm("Importar este backup vai substituir seus dados atuais. Continuar?")) return;
+
+    save(LS.decks, data.decks ?? []);
+    save(LS.cards, data.cards ?? []);
+    save(LS.stats, data.stats ?? {byDay:{}});
+
+    refreshAllSelects();
+    updateDeckCounts();
+    renderDeckList();
+    refreshStats();
+
+    $("backupMsg").textContent = "Backup importado ✅";
+  } catch(err){
+    $("backupMsg").textContent = "Erro ao importar: " + (err?.message || "desconhecido");
+  } finally {
+    $("importFile").value = "";
+  }
+};
+
+$("resetAll").onclick = () => {
+  if(!confirm("Zerar TUDO? Isso apaga decks, cards e stats.")) return;
+  localStorage.removeItem(LS.decks);
+  localStorage.removeItem(LS.cards);
+  localStorage.removeItem(LS.stats);
+  ensureInit();
+  refreshAllSelects();
+  updateDeckCounts();
+  renderDeckList();
+  refreshStats();
+  $("backupMsg").textContent = "Dados zerados.";
+};
+
+// Initial render
+renderDeckList();
+refreshStats();
+
+// PWA service worker
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
